@@ -1,0 +1,14 @@
+This is just an example to show how to use u-SCL. One can use this example to
+compare the performance of Pthread-mutex, Pthread-spinlock and u-SCL. 
+
+To compile the example, use the makefile and pass either fairlock (u-SCL),
+mutex (Pthread-mutex) and spin (Pthread-spinlock) parameter to compile the
+relevant binary.
+
+You need to set the value of CYCLE_PER_US value to ensure that the right value
+is considered for calculation purpose. If a wrong value is set, the results
+might not be correct. Use the CPU-speed to determine the right value of
+CYCLE_PER_US. For example: if the CPU-SPEED is 2.4 GHz, then the CYCLE_PER_US
+value should be set to 2400L. This value is set assuming that the CPU will run
+at this constant speed. Different power settings can lower the CPU-speed
+leading to incorrect results.

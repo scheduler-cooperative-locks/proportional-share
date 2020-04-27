@@ -1,0 +1,15 @@
+This is just an example to show how to use RW-SCL. One can use this example to
+compare the performance of Pthread-rwlock and RW-SCL. One can set the read or
+writer preference mode for pthread-rwlock.
+
+To compile the example, use the makefile and pass either rwlock_scl (RW-SCL),
+read_pref (reader-preference pthread-rwlock) and write_pref (writer-preference
+pthread-rwlock) parameter to compile the relevant binary.
+
+You need to set the value of CYCLE_PER_US value to ensure that the right value
+is considered for calculation purpose. If a wrong value is set, the results
+might not be correct. Use the CPU-speed to determine the right value of
+CYCLE_PER_US. For example: if the CPU-SPEED is 2.4 GHz, then the CYCLE_PER_US
+value should be set to 2400L. This value is set assuming that the CPU will run
+at this constant speed. Different power settings can lower the CPU-speed
+leading to incorrect results.
