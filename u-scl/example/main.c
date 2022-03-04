@@ -26,11 +26,13 @@ typedef struct {
 #endif
     int id;
     double cs;
+    double non_cs;
     int ncpu;
     // outputs
     ull loop_in_cs;
     ull lock_acquires;
     ull lock_hold;
+    ull time_non_cs;
 } task_t __attribute__ ((aligned (64)));
 
 lock_t lock;
@@ -72,8 +74,11 @@ void *worker(void *arg) {
     ull now, start, then;
     ull lock_acquires = 0;
     ull lock_hold = 0;
+    ull time_non_cs = 0;
     ull loop_in_cs = 0;
-    const ull delta = CYCLE_PER_US * task->cs;
+    ull loop_in_non_cs = 0;
+    const ull cs_delta = CYCLE_PER_US * task->cs;
+    const ull non_cs_delta = CYCLE_PER_US * task->non_cs;
     while (!*task->stop) {
 
         lock_acquire(&lock);
@@ -81,7 +86,7 @@ void *worker(void *arg) {
 
         lock_acquires++;
         start = now;
-        then = now + delta;
+        then = now + cs_delta;
 
         do {
             loop_in_cs++;
@@ -90,10 +95,19 @@ void *worker(void *arg) {
         lock_hold += now - start;
 
         lock_release(&lock);
+
+        now = rdtscp();
+        start = now;
+        then = now + non_cs_delta;
+        do {
+            loop_in_non_cs++;
+        } while ((now = rdtscp()) < then);
+        time_non_cs += now - start;
     }
     task->lock_acquires = lock_acquires;
     task->loop_in_cs = loop_in_cs;
     task->lock_hold = lock_hold;
+    task->time_non_cs = time_non_cs;
 
     pid_t pid = getpid();
     char path[256];
@@ -113,11 +127,13 @@ void *worker(void *arg) {
             "loop %10llu "
             "lock_acquires %8llu "
             "lock_hold(ms) %10.3f "
+            "time_in_non_cs(ms) %10.3f "
             "schedstat %s",
             task->id,
             task->loop_in_cs,
             task->lock_acquires,
             task->lock_hold / (float) (CYCLE_PER_US * 1000),
+            task->time_non_cs / (float) (CYCLE_PER_US * 1000),
             buffer);
 #if defined(FAIRLOCK) && defined(DEBUG)
     flthread_info_t *info = pthread_getspecific(lock.flthread_info_key);
@@ -147,10 +163,11 @@ void *worker(void *arg) {
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        printf("usage: %s <nthreads> <duration> <<cs prio> <..n>> [NCPU]\n", argv[0]);
+        printf("usage: %s <nthreads> <duration> <<cs non-cs prio> <..n>> [NCPU]\n", argv[0]);
 	printf("nthreads - no. of threads to be used for experimentation\n");
 	printf("duration - the duration of the experiment\n");
 	printf("cs - critical section size in us(microseconds)\n");
+	printf("non-cs - non-critical section size in us(microseconds)\n");
 	printf("prio - priority of the thread\n");
 	printf("NCPU - no. of CPUs to be used for the experimentation\n");
         return 1;
@@ -158,7 +175,7 @@ int main(int argc, char *argv[]) {
     int nthreads = atoi(argv[1]);
     int duration = atoi(argv[2]);
     task_t *tasks = malloc(sizeof(task_t) * nthreads);
-    if (argc < 3+nthreads*2) {
+    if (argc < 3+nthreads*3) {
         printf("usage: %s <nthreads> <duration> <<cs prio> <..n>> [NCPU]\n", argv[0]);
         return 1;
     }
@@ -167,13 +184,13 @@ int main(int argc, char *argv[]) {
 #ifdef FAIRLOCK
     int tot_weight = 0;
 #endif
-    int ncpu = argc > 3 + nthreads*2 ? atoi(argv[3+nthreads*2]) : 0;
+    int ncpu = argc > 3 + nthreads*3 ? atoi(argv[3+nthreads*3]) : 0;
     for (int i = 0; i < nthreads; i++) {
         tasks[i].stop = &stop;
-        tasks[i].cs = atof(argv[3+i*2]);
+        tasks[i].cs = atof(argv[3+i*3]);
+        tasks[i].non_cs = atof(argv[4+i*3]);
 
-        int priority = atoi(argv[4+i*2]);
-        tasks[i].priority = priority;
+        tasks[i].priority = atoi(argv[5+i*3]);
 #ifdef FAIRLOCK
         int weight = prio_to_weight[priority+20];
         tasks[i].weight = weight;
@@ -186,6 +203,7 @@ int main(int argc, char *argv[]) {
         tasks[i].loop_in_cs = 0;
         tasks[i].lock_acquires = 0;
         tasks[i].lock_hold = 0;
+        tasks[i].time_non_cs = 0;
     }
 
 //#ifdef FAIRLOCK
